@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG 06 — GraphRAG & Knowledge Graphs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-card: #0d1117;
+            --bg-code: #161b22;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #76B900;
+            --accent-dim: #76B90044;
+            --accent-glow: #76B90033;
+            --border: #21262d;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+            --font-body: 'Inter', sans-serif;
+            --max-width: 900px;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 17px;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            position: relative;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .hero > * { position: relative; z-index: 1; }
+        .series-label {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+        .hero h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+            margin-bottom: 1rem;
+        }
+        .hero h1 .accent { color: var(--accent); }
+        .hero .subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin-bottom: 2rem;
+        }
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 2.5rem;
+        }
+        .tag {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+            white-space: nowrap;
+        }
+        .pipeline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+            max-width: var(--max-width);
+        }
+        .pipeline-step {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            padding: 0.3rem 0.7rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .pipeline-arrow { color: var(--accent); font-size: 0.9rem; font-weight: 700; }
+        .slide {
+            min-height: 100vh;
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 4rem 1.5rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .slide-number {
+            font-family: var(--font-display);
+            font-size: 5rem;
+            font-weight: 700;
+            color: var(--accent-dim);
+            position: absolute;
+            top: 2rem;
+            right: 1.5rem;
+            line-height: 1;
+            user-select: none;
+        }
+        .slide h2 {
+            font-family: var(--font-display);
+            font-size: 1.9rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 1.5rem;
+            line-height: 1.25;
+        }
+        .slide h3 {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .slide p { margin-bottom: 1rem; color: var(--text-secondary); }
+        .slide p strong { color: var(--text-primary); }
+        .slide ul, .slide ol { margin-bottom: 1rem; padding-left: 1.5rem; color: var(--text-secondary); }
+        .slide li { margin-bottom: 0.4rem; }
+        .slide li strong { color: var(--text-primary); }
+        .slide code {
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            padding: 0.05rem 0.35rem;
+            border-radius: 3px;
+            color: #c9d1d9;
+        }
+        .code-block {
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 1.25rem 0;
+            overflow: hidden;
+        }
+        .code-header {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            background: rgba(118, 185, 0, 0.08);
+            padding: 0.4rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .code-block pre { margin: 0; padding: 1rem; overflow-x: auto; }
+        .code-block code {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #c9d1d9;
+            background: transparent;
+            border: none;
+            padding: 0;
+        }
+        .kw { color: #ff7b72; }
+        .fn { color: #d2a8ff; }
+        .str { color: #a5d6ff; }
+        .cm { color: #8b949e; font-style: italic; }
+        .num { color: #79c0ff; }
+        .type { color: #ffa657; }
+        .dir { color: #ff7b72; }
+        .mac { color: #ffa657; }
+        .table-wrap {
+            overflow-x: auto;
+            margin: 1.25rem 0;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th {
+            background: var(--bg-code);
+            color: var(--accent);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-display);
+            white-space: nowrap;
+        }
+        td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:nth-child(even) td { background: rgba(13, 17, 23, 0.5); }
+        .diagram-flow {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-box {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            text-align: center;
+            white-space: nowrap;
+        }
+        .diagram-box.accent { border-color: var(--accent); color: var(--accent); background: rgba(118, 185, 0, 0.08); }
+        .diagram-box.dim { color: var(--text-secondary); border-color: var(--border); }
+        .diagram-arrow { color: var(--accent); font-size: 1.3rem; font-weight: 700; }
+        .diagram-vertical {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-vertical .diagram-arrow { font-size: 1.1rem; }
+        .hierarchy {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .hierarchy-level { display: flex; align-items: center; gap: 0.75rem; }
+        .hierarchy-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 80px;
+            text-align: right;
+        }
+        .hierarchy-items { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+        .hierarchy-item {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .hierarchy-item.accent { border-color: var(--accent); color: var(--accent); background: rgba(118, 185, 0, 0.08); }
+        .diagram-grid {
+            display: grid;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+            padding: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .diagram-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+        .diagram-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+        .diagram-panel {
+            padding: 1rem;
+            background: var(--bg-code);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .diagram-panel.accent-border { border-left: 3px solid var(--accent); }
+        .diagram-panel h4 {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        .diagram-panel p, .diagram-panel ul { font-size: 0.85rem; }
+        .callout {
+            background: var(--bg-card);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 8px 8px 0;
+            padding: 1rem 1.25rem;
+            margin: 1.25rem 0;
+        }
+        .callout p { margin-bottom: 0; }
+        .callout p + p { margin-top: 0.5rem; }
+        .callout .callout-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+        }
+        .contents-list { list-style: none; padding-left: 0; counter-reset: contents; }
+        .contents-list li {
+            counter-increment: contents;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .contents-list li:last-child { border-bottom: none; }
+        .contents-list li::before {
+            content: counter(contents, decimal-leading-zero);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--accent);
+            min-width: 2rem;
+        }
+        .contents-list a { color: var(--text-primary); text-decoration: none; transition: color 0.2s; }
+        .contents-list a:hover { color: var(--accent); }
+        .footer {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            max-width: var(--max-width);
+            margin: 0 auto;
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        .canvas-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.25rem 0;
+            overflow-x: auto;
+        }
+        .canvas-wrap canvas, .canvas-wrap svg { display: block; margin: 0 auto; max-width: 100%; }
+        .badge {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            padding: 0.1rem 0.45rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            vertical-align: middle;
+            margin-left: 0.3rem;
+        }
+        .badge.ok    { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+        .badge.warn  { border-color: #ffa657; color: #ffa657; background: rgba(255,166,87,0.08); }
+        .badge.bad   { border-color: #ff7b72; color: #ff7b72; background: rgba(255,123,114,0.08); }
+        @media (max-width: 640px) {
+            .slide { padding: 3rem 1rem; min-height: auto; }
+            .slide-number { font-size: 3rem; top: 1.5rem; right: 1rem; }
+            .slide h2 { font-size: 1.5rem; }
+            .diagram-grid.cols-2, .diagram-grid.cols-3 { grid-template-columns: 1fr; }
+            .pipeline { gap: 0.15rem; }
+            .pipeline-step { font-size: 0.6rem; padding: 0.2rem 0.4rem; }
+            .hero h1 { font-size: 1.8rem; }
+            table { font-size: 0.78rem; }
+        }
+    </style>
+</head>
+<body>
+<header class="hero">
+    <div class="series-label">RAG &amp; Retrieval Systems Series &mdash; Presentation 06</div>
+    <h1>GraphRAG &amp; <span class="accent">Knowledge Graphs</span></h1>
+    <p class="subtitle">Microsoft GraphRAG, KG construction, property graphs vs RDF, Neo4j &amp; KuzuDB, hybrid graph+vector retrieval, Cypher in agent loops, and when graphs help.</p>
+    <div class="tags">
+        <span class="tag">GraphRAG</span>
+        <span class="tag">KG Construction</span>
+        <span class="tag">Neo4j</span>
+        <span class="tag">KuzuDB</span>
+        <span class="tag">Property Graph</span>
+        <span class="tag">Cypher</span>
+        <span class="tag">Multi-Hop</span>
+    </div>
+    <div class="pipeline">
+        <span class="pipeline-step">Documents</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Entity extract</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">KG build</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Cluster</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Summarise</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Cypher / Embed</span>
+        <span class="pipeline-arrow">&rarr;</span>
+        <span class="pipeline-step">Answer</span>
+    </div>
+</header>
+
+<section class="slide" id="slide-00">
+    <div class="slide-number">00</div>
+    <h2>Topics We'll Cover</h2>
+    <ul class="contents-list">
+        <li><a href="#slide-01">Why Graphs &mdash; Multi-Hop &amp; Source Traceability</a></li>
+        <li><a href="#slide-02">Microsoft GraphRAG &mdash; Entities, Communities, Summaries</a></li>
+        <li><a href="#slide-03">Knowledge Graph Construction &mdash; Entity Resolution, Schema, Linking</a></li>
+        <li><a href="#slide-04">Property Graphs vs RDF &mdash; Neo4j, Memgraph, KuzuDB, NetworkX</a></li>
+        <li><a href="#slide-05">Hybrid Graph + Vector Retrieval</a></li>
+        <li><a href="#slide-06">Cypher in Agent Loops</a></li>
+        <li><a href="#slide-07">When Graphs Help, When They Don't</a></li>
+        <li><a href="#slide-08">Building Blocks &mdash; DSPy, LlamaIndex, LangChain</a></li>
+        <li><a href="#slide-09">What to Take Away</a></li>
+    </ul>
+</section>
+
+<section class="slide" id="slide-01">
+    <div class="slide-number">01</div>
+    <h2>Why Graphs &mdash; Multi-Hop &amp; Source Traceability</h2>
+    <p>Standard vector retrieval retrieves <em>documents</em>. It cannot natively express <em>relationships</em> between entities across documents. Two canonical failures:</p>
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Multi-hop reasoning failure</h4>
+            <p><em>"Which company founded by the author of Attention Is All You Need was acquired by Google?"</em> &mdash; this requires: (1) retrieve author names from the AIAYN paper; (2) retrieve companies founded by those authors; (3) check which was acquired by Google. Vector search over a flat index cannot chain these hops &mdash; the relevant passages never co-occur in a single chunk.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Source traceability failure</h4>
+            <p>In a vector RAG system, a claim in the generated answer may come from any of the retrieved chunks. With a knowledge graph, each triple (subject, predicate, object) carries a provenance pointer to the source document and passage. Traceability is first-class: every fact has an auditable chain back to its origin.</p>
+        </div>
+    </div>
+    <div class="callout">
+        <div class="callout-label">Graph + vector is not either/or</div>
+        <p>The most effective systems use graphs and vectors together: graph traversal for multi-hop and relational queries, vector similarity for semantic search within a node's neighbourhood. The graph defines <em>what is related</em>; the vectors define <em>what is semantically similar</em>. These are complementary, not competing, capabilities.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-02">
+    <div class="slide-number">02</div>
+    <h2>Microsoft GraphRAG &mdash; Entities, Communities, Summaries</h2>
+    <p><strong>GraphRAG</strong> (Edge et al. 2024, Microsoft Research) builds a hierarchical knowledge graph from a text corpus and uses LLM-generated community summaries to answer global questions that require synthesising information across many documents.</p>
+    <div class="diagram-vertical">
+        <div class="diagram-box accent">Corpus (chunked documents)</div>
+        <div class="diagram-arrow">&darr;</div>
+        <div class="diagram-box">LLM entity &amp; relation extraction per chunk<br><small>Entities: PERSON, ORG, CONCEPT, LOCATION; Relations: founded_by, part_of, causes&hellip;</small></div>
+        <div class="diagram-arrow">&darr;</div>
+        <div class="diagram-box accent">Graph construction (entity resolution + dedup)<br><small>Leiden algorithm community detection; hierarchical levels C0, C1, C2&hellip;</small></div>
+        <div class="diagram-arrow">&darr;</div>
+        <div class="diagram-box">LLM community summaries<br><small>Each community: a ~500-token summary of its entities and relationships</small></div>
+        <div class="diagram-arrow">&darr;</div>
+        <div class="diagram-box accent">Two query modes: Global (community summaries) | Local (entity subgraph + text)</div>
+    </div>
+    <div class="callout">
+        <div class="callout-label">GraphRAG index build cost is high</div>
+        <p>Building a GraphRAG index over a 1 M-token corpus requires ~1 M LLM tokens for entity extraction (at $0.15/Mtok for GPT-4o-mini: ~$0.15) plus ~500 k tokens for community summarisation. Total: ~$0.25&ndash;1 per Mtok of corpus. For a 100 M-token enterprise corpus, this is $25&ndash;100 at build time. Updates require re-processing changed documents. Costs have dropped 10&times; with smaller summarisation models (Phi-3.5-mini fine-tuned on summarisation tasks). Open-source: <code>pip install graphrag</code> (Microsoft, MIT licence).</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-03">
+    <div class="slide-number">03</div>
+    <h2>Knowledge Graph Construction &mdash; Entity Resolution, Schema, Linking</h2>
+    <p>Building a KG from text requires three non-trivial steps: extraction, resolution, and linking. The quality of the graph is bounded by the worst of these three.</p>
+    <div class="diagram-grid cols-3">
+        <div class="diagram-panel accent-border">
+            <h4>Extraction</h4>
+            <p>Named Entity Recognition (NER) + Relation Extraction (RE). Options: (1) LLM-based with a structured output schema (GPT-4o + JSON mode &mdash; high quality, high cost); (2) GLiNER open-weights span-based NER (fast, lower quality); (3) Rebel (open RE model from BABELSCAPE, seq2seq triples). For domain-specific KGs, few-shot prompting with domain-specific entity types outperforms off-the-shelf NER by 20&ndash;40%.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Entity resolution</h4>
+            <p>The same entity may appear under different names: "OpenAI", "Open AI", "OpenAI Inc.", "OpenAI, LLC". Resolution merges these into a single canonical node. Approaches: string similarity (Jaro-Winkler, Levenshtein), embedding cosine similarity, and LLM-as-judge for ambiguous cases. FalkorDB and Neo4j GenAI plugin both include entity resolution utilities.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>Linking (entity linking)</h4>
+            <p>Map extracted entities to a reference KB (Wikidata, DBpedia, UMLS for biomedical). Provides canonical IDs, rich properties (birth date, country, description), and cross-document coreference for free. Tools: mGenre (multilingual entity linking), REL, BLINK (Meta AI, fast bi-encoder entity linker). Linking is optional for closed-domain KGs but essential for open-domain.</p>
+        </div>
+    </div>
+</section>
+
+<section class="slide" id="slide-04">
+    <div class="slide-number">04</div>
+    <h2>Property Graphs vs RDF &mdash; Neo4j, Memgraph, KuzuDB, NetworkX</h2>
+    <p>Two data models dominate graph storage for RAG: <strong>property graphs</strong> (node/edge with key-value properties) and <strong>RDF triplestores</strong> (subject-predicate-object). They differ in expressiveness, query language, and operational complexity.</p>
+    <div class="diagram-grid cols-2">
+        <div class="diagram-panel accent-border">
+            <h4>Property graph (Cypher)</h4>
+            <p>Nodes and edges each carry arbitrary property dictionaries. Queried with Cypher (Neo4j, Memgraph) or GQL (ISO standard). More intuitive for most developers. No formal semantics &mdash; no inferencing. Best for: entity-relationship queries, social graphs, document provenance graphs.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>RDF triplestore (SPARQL)</h4>
+            <p>Every fact is a (subject, predicate, object) triple stored as a URI. Supports OWL inferencing (class hierarchies, transitivity). Formally grounded in semantic web standards. Best for: scientific knowledge graphs, regulatory ontologies, Wikidata-style open KGs. Heavier to operate than property graphs.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>System</th><th>Type</th><th>Deployment</th><th>Key strength</th><th>RAG integration</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Neo4j</strong></td><td>Property graph</td><td>Self-host / AuraDB managed</td><td>Mature; LangChain + LlamaIndex native connectors; vector+graph hybrid (GenAI plugin)</td><td>Best ecosystem</td></tr>
+                <tr><td><strong>Memgraph</strong></td><td>Property graph</td><td>Self-host (Docker)</td><td>In-memory; streaming (Kafka); MAGE algorithm library</td><td>Good Cypher support</td></tr>
+                <tr><td><strong>KuzuDB</strong></td><td>Property graph</td><td>Embedded (local file)</td><td>Zero-ops; DuckDB-style; fast analytical queries; open-source</td><td>LangChain connector v0.2+</td></tr>
+                <tr><td><strong>NetworkX</strong></td><td>Python object graph</td><td>In-process</td><td>Zero overhead; Pythonic; ideal for small graphs (&lt;100k nodes)</td><td>Manual integration</td></tr>
+                <tr><td><strong>FalkorDB</strong></td><td>Property graph</td><td>Self-host (Redis-compatible)</td><td>GraphBLAS sparse-matrix backend; fast traversal</td><td>LangChain connector</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="slide" id="slide-05">
+    <div class="slide-number">05</div>
+    <h2>Hybrid Graph + Vector Retrieval</h2>
+    <p>The most powerful RAG architecture combines graph traversal and vector similarity. The graph restricts the search space to a semantically coherent neighbourhood; the vector index ranks within that neighbourhood by semantic similarity.</p>
+    <div class="diagram-flow">
+        <div class="diagram-box">User query</div>
+        <div class="diagram-arrow">&rarr;</div>
+        <div class="diagram-box accent">Entity extraction<br>from query</div>
+        <div class="diagram-arrow">&rarr;</div>
+        <div class="diagram-box">Graph hop:<br>1&ndash;2 neighbours<br>of query entities</div>
+        <div class="diagram-arrow">&rarr;</div>
+        <div class="diagram-box accent">Collect candidate<br>chunk IDs from<br>graph nodes</div>
+        <div class="diagram-arrow">&rarr;</div>
+        <div class="diagram-box">Vector similarity<br>within candidates<br>(pre-filtered ANN)</div>
+        <div class="diagram-arrow">&rarr;</div>
+        <div class="diagram-box accent">Top-k &rarr; LLM</div>
+    </div>
+    <div class="code-block">
+        <div class="code-header">LangChain Neo4j hybrid retriever (v0.3)</div>
+<pre><code><span class="kw">from</span> langchain_community.graphs <span class="kw">import</span> Neo4jGraph
+<span class="kw">from</span> langchain_community.vectorstores <span class="kw">import</span> Neo4jVector
+<span class="kw">from</span> langchain_openai <span class="kw">import</span> OpenAIEmbeddings
+
+graph = <span class="fn">Neo4jGraph</span>(url=<span class="str">"bolt://localhost:7687"</span>, username=<span class="str">"neo4j"</span>, password=<span class="str">"..."</span>)
+
+<span class="cm"># Neo4j GenAI plugin: vector index on chunk nodes</span>
+store = Neo4jVector.<span class="fn">from_existing_graph</span>(
+    embedding=<span class="fn">OpenAIEmbeddings</span>(model=<span class="str">"text-embedding-3-small"</span>),
+    graph=graph,
+    node_label=<span class="str">"Chunk"</span>,
+    text_node_properties=[<span class="str">"content"</span>],
+    embedding_node_property=<span class="str">"embedding"</span>,
+    retrieval_query=<span class="str">"""
+        MATCH (node)-[:MENTIONS]->(e:Entity)&lt;-[:MENTIONS]-(other:Chunk)
+        RETURN other.content AS text, score, {} AS metadata
+        ORDER BY score DESC LIMIT 10
+    """</span>,
+)</code></pre>
+    </div>
+</section>
+
+<section class="slide" id="slide-06">
+    <div class="slide-number">06</div>
+    <h2>Cypher in Agent Loops</h2>
+    <p>When an agent can generate and execute Cypher queries directly against a property graph, it gains the ability to express multi-hop questions precisely &mdash; without relying on approximate vector similarity to chain hops.</p>
+    <div class="code-block">
+        <div class="code-header">Text-to-Cypher with LangChain GraphCypherQAChain</div>
+<pre><code><span class="kw">from</span> langchain.chains <span class="kw">import</span> GraphCypherQAChain
+<span class="kw">from</span> langchain_openai <span class="kw">import</span> ChatOpenAI
+
+chain = GraphCypherQAChain.<span class="fn">from_llm</span>(
+    llm=<span class="fn">ChatOpenAI</span>(model=<span class="str">"gpt-4o"</span>, temperature=<span class="num">0</span>),
+    graph=graph,
+    verbose=<span class="kw">True</span>,
+    validate_cypher=<span class="kw">True</span>,   <span class="cm"># parse-check before execution</span>
+    return_intermediate_steps=<span class="kw">True</span>,
+)
+
+result = chain.<span class="fn">invoke</span>(
+    <span class="str">"Which organisations co-authored papers with researchers at DeepMind between 2022 and 2024?"</span>
+)
+<span class="cm"># chain emits generated Cypher, validates, executes, passes result to LLM for final answer</span></code></pre>
+    </div>
+    <div class="callout">
+        <div class="callout-label">Guard rails for agent-generated Cypher</div>
+        <p><strong>Always validate before executing.</strong> LLMs generate syntactically invalid Cypher or query non-existent labels/properties. Use <code>EXPLAIN</code> before <code>MATCH</code> to catch errors. Restrict the agent to a <strong>read-only</strong> database user: <code>GRANT ROLE reader TO agent_user</code>. Limit query depth and result size: <code>LIMIT 50</code> in all generated queries. Log all generated Cypher for audit. Consider a whitelist of allowed node labels and relationship types, enforced by a query validator before execution.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-07">
+    <div class="slide-number">07</div>
+    <h2>When Graphs Help, When They Don't</h2>
+    <p>Graph construction is expensive in both build cost and operational complexity. It is not always the right tool.</p>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Scenario</th><th>Graph benefit?</th><th>Recommendation</th></tr></thead>
+            <tbody>
+                <tr><td>Multi-hop reasoning over entities (people, orgs, products, events)</td><td>High</td><td>Use GraphRAG or KG + vector hybrid</td></tr>
+                <tr><td>Source provenance and citation tracing</td><td>High</td><td>KG with provenance pointers to source passages</td></tr>
+                <tr><td>Global summarisation (&ldquo;What are the main themes across 10 k documents?&rdquo;)</td><td>High</td><td>Microsoft GraphRAG community summaries</td></tr>
+                <tr><td>Simple factual QA over a single-domain corpus</td><td>Low</td><td>Dense retrieval + cross-encoder reranker is sufficient</td></tr>
+                <tr><td>Semantic similarity search only</td><td>None</td><td>Vector DB only; graph adds complexity without benefit</td></tr>
+                <tr><td>Dynamic corpus (&gt;10% daily changes)</td><td>Low (high update cost)</td><td>Avoid KG; use vector DB with incremental upsert</td></tr>
+                <tr><td>Small, well-structured domain (&lt;100 k facts)</td><td>Medium</td><td>KuzuDB or NetworkX; avoid Neo4j overhead</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="callout">
+        <div class="callout-label">GraphRAG is not a drop-in improvement</div>
+        <p>Microsoft's own evaluations show GraphRAG improves <em>global</em> query performance (themes, summaries, patterns) by 25&ndash;40% over vector RAG, but is <em>worse</em> than vector RAG on specific factual lookups due to the abstraction overhead. Use GraphRAG for analytical, synthesis, and exploration queries; use vector RAG for precision factual retrieval. A router that selects between them is the pragmatic production architecture.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-08">
+    <div class="slide-number">08</div>
+    <h2>Building Blocks &mdash; DSPy, LlamaIndex, LangChain</h2>
+    <p>Three frameworks dominate the GraphRAG implementation space. Each has different strengths for KG construction, hybrid retrieval, and agent orchestration.</p>
+    <div class="diagram-grid cols-3">
+        <div class="diagram-panel accent-border">
+            <h4>LangChain / LangGraph</h4>
+            <p>Best ecosystem for KG integration: <code>Neo4jGraph</code>, <code>GraphCypherQAChain</code>, <code>Neo4jVector</code>, <code>FalkorDBGraph</code>. LangGraph handles multi-step agent loops with explicit state machines. Verbose but configurable. Connector library is the most comprehensive of the three.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>LlamaIndex</h4>
+            <p><code>KnowledgeGraphIndex</code> builds a KG from documents using LLM triplet extraction. <code>KnowledgeGraphQueryEngine</code> routes queries to graph or vector based on type. <code>PropertyGraphIndex</code> (v0.10+) supports Neo4j and KuzuDB as backends. Better than LangChain for structured document hierarchies and parent&ndash;child retrieval.</p>
+        </div>
+        <div class="diagram-panel accent-border">
+            <h4>DSPy</h4>
+            <p>Framework for <em>optimising</em> LLM pipelines via compilation. For GraphRAG: define a DSPy signature for entity extraction, relation extraction, and graph querying; use MIPRO or BootstrapFewShot to optimise prompts against a labelled evaluation set. DSPy can tune the entity extraction prompt to improve KG quality without manual prompt engineering. Most powerful when you have labelled QA pairs.</p>
+        </div>
+    </div>
+    <div class="callout">
+        <div class="callout-label">Start simple: KuzuDB + LangChain</div>
+        <p>KuzuDB (v0.7, 2024) is an embedded property graph database requiring no separate server. <code>pip install kuzu</code>. LangChain's <code>KuzuQAChain</code> supports text-to-Cypher natively. For a pilot GraphRAG system, build the KG with KuzuDB locally, run hybrid retrieval with a pgvector instance, and use LangGraph for the agent loop. Only graduate to Neo4j AuraDB when the team graph exceeds 10 M nodes or requires HA.</p>
+    </div>
+</section>
+
+<section class="slide" id="slide-09">
+    <div class="slide-number">09</div>
+    <h2>What to Take Away</h2>
+    <ul>
+        <li><strong>Graphs excel at multi-hop reasoning and source provenance.</strong> Neither is well-served by vector retrieval alone.</li>
+        <li><strong>Microsoft GraphRAG</strong> uses entity extraction + Leiden community detection + LLM summaries per community to enable global synthesis queries. Build cost: ~$0.25&ndash;1 per Mtok. Open-source (MIT).</li>
+        <li><strong>KG construction quality</strong> depends on entity resolution and linking. LLM-based extraction is highest quality; GLiNER + REBEL is a fast open-source alternative.</li>
+        <li><strong>Property graphs</strong> (Cypher) are the right choice for most RAG KGs. RDF is for standards-compliance and inferencing use cases.</li>
+        <li><strong>KuzuDB</strong> for embedded/local; Neo4j for production scale; Memgraph for streaming/real-time.</li>
+        <li><strong>Hybrid graph + vector</strong> is the production architecture: graph restricts candidates, vector ranks within the neighbourhood.</li>
+        <li><strong>Always validate agent-generated Cypher</strong> before execution. Use a read-only DB user and LIMIT guards.</li>
+        <li><strong>Don't add a graph unless you have multi-hop or provenance requirements.</strong> Vector RAG is faster, simpler, and better for direct factual queries.</li>
+    </ul>
+    <div class="callout">
+        <div class="callout-label">Where to next</div>
+        <p>Deck 07 covers production RAG: eval pipelines (RAGAS, ARES, Trulens), embedding drift, A/B testing, latency caching, multi-tenancy with namespaces and ACLs, citation and grounding, cost modelling, and the failure modes you will definitely encounter.</p>
+    </div>
+</section>
+
+<footer class="footer">
+    <p>Part of the <a href="https://github.com/BrendanJamesLynskey/LLM_Hub_RAG_Retrieval">RAG &amp; Retrieval Systems Series</a></p>
+    <p style="margin-top:0.5rem;font-size:0.8rem;"><a href="https://github.com/BrendanJamesLynskey/LLM_Hub_RAG_Retrieval">Back to Series Index</a></p>
+</footer>
+<script>
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.slide').forEach(slide => {
+        slide.style.opacity = '0';
+        slide.style.transform = 'translateY(30px)';
+        slide.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+        observer.observe(slide);
+    });
+</script>
+</body>
+</html>
